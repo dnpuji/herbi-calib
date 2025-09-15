@@ -159,15 +159,25 @@ with menu[4]:
     st.header("📖 Riwayat Data")
     if os.path.exists(HISTORY_FILE):
         df = pd.read_csv(HISTORY_FILE)
-        st.dataframe(df)
 
-        # Download
+        # Tampilkan ringkasan per Tanggal + Menu
+        numeric_cols = df.select_dtypes(include="number").columns
+        summary = df.groupby(["Tanggal", "Menu"])[numeric_cols].sum().reset_index()
+
+        st.subheader("📊 Ringkasan Harian")
+        st.dataframe(summary)
+
+        # Download ringkasan
         st.download_button(
-            label="⬇️ Download Semua Data",
-            data=df.to_csv(index=False).encode("utf-8"),
-            file_name="riwayat_input_tebu.csv",
+            label="⬇️ Download Ringkasan",
+            data=summary.to_csv(index=False).encode("utf-8"),
+            file_name="riwayat_ringkasan.csv",
             mime="text/csv"
         )
+
+        # Opsi: tampilkan data mentah juga
+        with st.expander("📂 Lihat Data Mentah"):
+            st.dataframe(df)
 
         # Hapus data dengan password
         st.subheader("🔑 Hapus Data (Admin Only)")
