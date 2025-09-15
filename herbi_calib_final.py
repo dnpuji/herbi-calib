@@ -1,146 +1,201 @@
 import streamlit as st
-import matplotlib.pyplot as plt
 import pandas as pd
-from datetime import datetime
 import os
+import datetime
+import matplotlib.pyplot as plt
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
+# ==========================
+# Konfigurasi
+# ==========================
 HISTORY_FILE = "history.csv"
+ADMIN_PASSWORD = "admin1234"
 
-# Fungsi simpan history
-def save_history(menu, data_dict):
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    record = {"menu": menu, "timestamp": now}
-    record.update(data_dict)
+# Google Sheets API setup
+SHEET_ID = "uq1boLLUXeuIUtNo2xwCFivgfGPOuZxNDKvbklmWOd4"  # ganti dengan ID Google Sheet
+SHEET_NAME = "Sheet1"
 
+scope = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive"
+]
+
+# Gunakan secrets di Streamlit Cloud
+if "gcp_service_account" in st.secrets:
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(
+        st.secrets["gcp_service_account"], scope
+    )
+    client = gspread.authorize(creds)
+    sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
+else:
+    sheet = None  # offline mode jika belum ada secrets
+
+
+# ==========================
+# Helper Functions
+# ==========================
+def save_history(entry):
+    """Simpan ke CSV dan Google Sheet jika ada"""
+    # simpan CSV
     if os.path.exists(HISTORY_FILE):
         df = pd.read_csv(HISTORY_FILE)
-        df = pd.concat([df, pd.DataFrame([record])], ignore_index=True)
+        df = pd.concat([df, pd.DataFrame([entry])], ignore_index=True)
     else:
-        df = pd.DataFrame([record])
+        df = pd.DataFrame([entry])
     df.to_csv(HISTORY_FILE, index=False)
 
-# Sidebar
-st.sidebar.title("📌 Menu Utama")
-menu = st.sidebar.radio(
-    "Pilih menu:",
-    ["🍄 Fungisida", "🐛 Furadan", "🌿 Pupuk", "🧺 BIN", "📖 Riwayat"]
-)
+    # simpan ke Google Sheet
+    if sheet:
+        sheet.append_row(list(entry.values()))
 
-# ---------------- Fungisida ----------------
-if menu == "🍄 Fungisida":
-    st.title("🍄 Kebutuhan Fungisida")
 
-    kapasitas = st.number_input("Kapasitas jerigen (L)", min_value=1, value=20)
-    dosis = st.number_input("Dosis fungisida (L konsentrat / L air)", min_value=0.0, value=0.24, step=0.01)
-    sisa_jerigen = st.number_input("Sisa isi di jerigen (L)", min_value=0.0, value=0.0)
-
-    sudah_terisi = sisa_jerigen
-    masih_kosong = kapasitas - sudah_terisi
-
-    air_tambah = masih_kosong
-    konsentrat_tambah = masih_kosong * dosis
-
-    st.subheader("📊 Hasil Perhitungan")
-    st.success(f"Sisa isi di jerigen: **{sudah_terisi} L**")
-    st.info(f"Tambahkan Air: **{air_tambah:.2f} L**")
-    st.warning(f"Tambahkan Fungisida: **{konsentrat_tambah:.2f} L**")
-    st.write(f"Kapasitas penuh jerigen: **{kapasitas} L (air + fungisida)**")
-
-    # Visualisasi jerigen
-    fig, ax = plt.subplots(figsize=(2,6))
-    ax.bar(0, sudah_terisi, color="green", label="Isi (L)")
-    ax.bar(0, masih_kosong, bottom=sudah_terisi, color="yellow", label="Kosong (L)")
-    ax.set_ylim(0, kapasitas)
+def draw_jerigen(current, capacity):
+    """Visualisasi jerigen vertikal"""
+    empty = capacity - current
+    fig, ax = plt.subplots(figsize=(2, 5))
+    ax.bar([0], [current], color="green")
+    ax.bar([0], [empty], bottom=[current], color="yellow")
+    ax.set_ylim(0, capacity)
     ax.set_xticks([])
     ax.set_ylabel("Liter")
-    ax.legend()
+    ax.set_title("Isi Jerigen")
     st.pyplot(fig)
 
-    # Simpan history
-    save_history("Fungisida", {
-        "kapasitas": kapasitas,
-        "sisa": sudah_terisi,
-        "air_tambah": air_tambah,
-        "fungisida_tambah": konsentrat_tambah
-    })
 
-    # Download CSV khusus Fungisida
-    if os.path.exists(HISTORY_FILE):
-        df = pd.read_csv(HISTORY_FILE)
-        df_fungisida = df[df["menu"] == "Fungisida"]
-        st.download_button(
-            label="⬇️ Download Data Fungisida",
-            data=df_fungisida.to_csv(index=False).encode("utf-8"),
-            file_name="fungisida_history.csv",
-            mime="text/csv"
-        )
+# ==========================
+# Sidebar Menu
+# ==========================
+menu = st.sidebar.radio(
+    "📌 Pilih Menu",
+    ["🍄 Fungisida", "🐛 Furadan", "🌱 Pupuk", "🧺 BIN", "📖 Riwayat"]
+)
 
-# ---------------- Furadan ----------------
+# ==========================
+# Menu Fungisida
+# ==========================
+if menu == "🍄 Fungisida":
+    st.title("🍄 Kalibrasi Fungisida")
+
+    capacity = st.number_input("Kapasitas Jerigen (L)", min_value=1, value=20)
+    dose_per_L = st.number_input("Dosis Fungisida (L/L Air)", min_value=0.0, value=0.24)
+    current_fill = st.number_input("Sisa Isi Jerigen (L)", min_value=0.0, max_value=float(capacity), value=0.0)
+
+    water_needed = capacity - current_fill
+    fungicide_needed = dose_per_L * water_needed
+
+    st.subheader("🔎 Perhitungan")
+    st.write(f"💧 Tambahkan **{water_needed:.2f} L air**")
+    st.write(f"🧪 Tambahkan **{fungicide_needed:.2f} L fungisida**")
+
+    draw_jerigen(current_fill, capacity)
+
+    if st.button("💾 Simpan Data"):
+        now = datetime.datetime.now()
+        entry = {
+            "Tanggal": now.strftime("%Y-%m-%d"),
+            "Waktu": now.strftime("%H:%M:%S"),
+            "Menu": "Fungisida",
+            "Sisa Jerigen (L)": current_fill,
+            "Air Ditambahkan (L)": water_needed,
+            "Fungisida Ditambahkan (L)": fungicide_needed
+        }
+        save_history(entry)
+        st.success("Data berhasil disimpan ✅")
+
+
+# ==========================
+# Menu Furadan
+# ==========================
 elif menu == "🐛 Furadan":
-    st.title("🐛 Total Furadan yang Digunakan (kg)")
-    furadan_total = st.number_input("Masukkan total Furadan (kg)", min_value=0.0, value=0.0, step=0.1)
-    st.success(f"Total Furadan digunakan: **{furadan_total} kg**")
+    st.title("🐛 Pemakaian Furadan (kg)")
 
-    save_history("Furadan", {"furadan_total_kg": furadan_total})
+    furadan_used = st.number_input("Jumlah Furadan yang digunakan (kg)", min_value=0.0, value=0.0)
 
-    if os.path.exists(HISTORY_FILE):
-        df = pd.read_csv(HISTORY_FILE)
-        df_furadan = df[df["menu"] == "Furadan"]
-        st.download_button(
-            label="⬇️ Download Data Furadan",
-            data=df_furadan.to_csv(index=False).encode("utf-8"),
-            file_name="furadan_history.csv",
-            mime="text/csv"
-        )
+    if st.button("💾 Simpan Data"):
+        now = datetime.datetime.now()
+        entry = {
+            "Tanggal": now.strftime("%Y-%m-%d"),
+            "Waktu": now.strftime("%H:%M:%S"),
+            "Menu": "Furadan",
+            "Jumlah (kg)": furadan_used
+        }
+        save_history(entry)
+        st.success("Data Furadan tersimpan ✅")
 
-# ---------------- Pupuk ----------------
-elif menu == "🌿 Pupuk":
-    st.title("🌿 Total Pupuk yang Digunakan (kg)")
-    pupuk_total = st.number_input("Masukkan total Pupuk (kg)", min_value=0.0, value=0.0, step=0.1)
-    st.success(f"Total Pupuk digunakan: **{pupuk_total} kg**")
 
-    save_history("Pupuk", {"pupuk_total_kg": pupuk_total})
+# ==========================
+# Menu Pupuk
+# ==========================
+elif menu == "🌱 Pupuk":
+    st.title("🌱 Pemakaian Pupuk (kg)")
 
-    if os.path.exists(HISTORY_FILE):
-        df = pd.read_csv(HISTORY_FILE)
-        df_pupuk = df[df["menu"] == "Pupuk"]
-        st.download_button(
-            label="⬇️ Download Data Pupuk",
-            data=df_pupuk.to_csv(index=False).encode("utf-8"),
-            file_name="pupuk_history.csv",
-            mime="text/csv"
-        )
+    pupuk_used = st.number_input("Jumlah Pupuk yang digunakan (kg)", min_value=0.0, value=0.0)
 
-# ---------------- BIN ----------------
+    if st.button("💾 Simpan Data"):
+        now = datetime.datetime.now()
+        entry = {
+            "Tanggal": now.strftime("%Y-%m-%d"),
+            "Waktu": now.strftime("%H:%M:%S"),
+            "Menu": "Pupuk",
+            "Jumlah (kg)": pupuk_used
+        }
+        save_history(entry)
+        st.success("Data Pupuk tersimpan ✅")
+
+
+# ==========================
+# Menu BIN
+# ==========================
 elif menu == "🧺 BIN":
-    st.title("🧺 Data BIN (wadah bibit)")
-    jumlah_bin = st.number_input("Jumlah BIN terpakai", min_value=1, value=10)
-    st.success(f"Total BIN digunakan: **{jumlah_bin} BIN**")
+    st.title("🧺 Pemakaian BIN (wadah bibit)")
 
-    save_history("BIN", {"jumlah_bin": jumlah_bin})
+    bin_used = st.number_input("Jumlah BIN yang digunakan", min_value=0, value=0)
 
-    if os.path.exists(HISTORY_FILE):
-        df = pd.read_csv(HISTORY_FILE)
-        df_bin = df[df["menu"] == "BIN"]
-        st.download_button(
-            label="⬇️ Download Data BIN",
-            data=df_bin.to_csv(index=False).encode("utf-8"),
-            file_name="bin_history.csv",
-            mime="text/csv"
-        )
+    if st.button("💾 Simpan Data"):
+        now = datetime.datetime.now()
+        entry = {
+            "Tanggal": now.strftime("%Y-%m-%d"),
+            "Waktu": now.strftime("%H:%M:%S"),
+            "Menu": "BIN",
+            "Jumlah (BIN)": bin_used
+        }
+        save_history(entry)
+        st.success("Data BIN tersimpan ✅")
 
-# ---------------- Riwayat ----------------
+
+# ==========================
+# Menu Riwayat
+# ==========================
 elif menu == "📖 Riwayat":
     st.title("📖 Riwayat Data Penggunaan")
+
     if os.path.exists(HISTORY_FILE):
         df = pd.read_csv(HISTORY_FILE)
         st.dataframe(df)
 
+        # Download button
         st.download_button(
             label="⬇️ Download Semua Data",
             data=df.to_csv(index=False).encode("utf-8"),
             file_name="all_history.csv",
             mime="text/csv"
         )
+
+        # Proteksi hapus
+        st.subheader("🔑 Hapus Data (Admin Only)")
+        password = st.text_input("Masukkan password admin:", type="password")
+
+        if password == ADMIN_PASSWORD:
+            index_to_delete = st.selectbox("Pilih index data yang ingin dihapus:", df.index)
+
+            if st.button("🗑️ Hapus Data Terpilih"):
+                df = df.drop(index=index_to_delete)
+                df.to_csv(HISTORY_FILE, index=False)
+                st.success("Data berhasil dihapus ✅")
+                st.experimental_rerun()
+        elif password != "":
+            st.error("❌ Password salah!")
+
     else:
-        st.warning("Belum ada riwayat data yang tersimpan.")
+        st.warning("Belum ada data riwayat.")
