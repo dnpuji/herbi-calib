@@ -1,76 +1,146 @@
 import streamlit as st
 import matplotlib.pyplot as plt
-import datetime
 import pandas as pd
+from datetime import datetime
+import os
 
-# Simpan riwayat input
-history_file = "history.csv"
+HISTORY_FILE = "history.csv"
 
-def load_history():
-    try:
-        return pd.read_csv(history_file)
-    except FileNotFoundError:
-        return pd.DataFrame(columns=["Waktu", "Kapasitas (L)", "Sisa Isi (L)", "Dosis (L/L)", "Air Tambah (L)", "Konsentrat Tambah (L)"])
+# Fungsi simpan history
+def save_history(menu, data_dict):
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    record = {"menu": menu, "timestamp": now}
+    record.update(data_dict)
 
-def save_history(new_entry):
-    df = load_history()
-    df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
-    df.to_csv(history_file, index=False)
+    if os.path.exists(HISTORY_FILE):
+        df = pd.read_csv(HISTORY_FILE)
+        df = pd.concat([df, pd.DataFrame([record])], ignore_index=True)
+    else:
+        df = pd.DataFrame([record])
+    df.to_csv(HISTORY_FILE, index=False)
 
-# Judul aplikasi
-st.set_page_config(page_title="Herbicide Calibration Web", page_icon="🌱", layout="centered")
-st.title("🌱 Herbicide Calibration Web")
+# Sidebar
+st.sidebar.title("📌 Menu Utama")
+menu = st.sidebar.radio(
+    "Pilih menu:",
+    ["🍄 Fungisida", "🐛 Furadan", "🌿 Pupuk", "🧺 BIN", "📖 Riwayat"]
+)
 
-st.subheader("Input Data")
-kapasitas = st.number_input("Kapasitas Jerigen (L)", min_value=1.0, value=20.0, step=1.0)
-dosis = st.number_input("Dosis Herbisida (L konsentrat / L campuran)", min_value=0.01, value=0.24, step=0.01)
-sisa_isi = st.number_input("Sisa Isi Jerigen (L)", min_value=0.0, value=0.0, step=0.1, max_value=kapasitas)
+# ---------------- Fungisida ----------------
+if menu == "🍄 Fungisida":
+    st.title("🍄 Kebutuhan Fungisida")
 
-# Hitung tambahan yang diperlukan
-total_tambahan = kapasitas - sisa_isi
-konsentrat_tambah = dosis * total_tambahan
-air_tambah = total_tambahan - konsentrat_tambah
+    kapasitas = st.number_input("Kapasitas jerigen (L)", min_value=1, value=20)
+    dosis = st.number_input("Dosis fungisida (L konsentrat / L air)", min_value=0.0, value=0.24, step=0.01)
+    sisa_jerigen = st.number_input("Sisa isi di jerigen (L)", min_value=0.0, value=0.0)
 
-if total_tambahan > 0:
-    st.success(f"Untuk mengisi jerigen hingga {kapasitas:.2f} L:")
-    st.write(f"- Tambahkan **{air_tambah:.2f} L air**")
-    st.write(f"- Tambahkan **{konsentrat_tambah:.2f} L konsentrat**")
-else:
-    st.info("Jerigen sudah penuh ✅")
+    sudah_terisi = sisa_jerigen
+    masih_kosong = kapasitas - sudah_terisi
 
-# Visualisasi jerigen (vertikal)
-st.subheader("Visualisasi Jerigen (Vertikal)")
+    air_tambah = masih_kosong
+    konsentrat_tambah = masih_kosong * dosis
 
-fig, ax = plt.subplots(figsize=(2, 5))
+    st.subheader("📊 Hasil Perhitungan")
+    st.success(f"Sisa isi di jerigen: **{sudah_terisi} L**")
+    st.info(f"Tambahkan Air: **{air_tambah:.2f} L**")
+    st.warning(f"Tambahkan Fungisida: **{konsentrat_tambah:.2f} L**")
+    st.write(f"Kapasitas penuh jerigen: **{kapasitas} L (air + fungisida)**")
 
-# Bagian isi
-ax.bar(0, sisa_isi, color="green", label=f"Isi {sisa_isi:.2f} L")
-# Bagian kosong
-ax.bar(0, kapasitas - sisa_isi, bottom=sisa_isi, color="yellow", label=f"Kosong {kapasitas - sisa_isi:.2f} L")
+    # Visualisasi jerigen
+    fig, ax = plt.subplots(figsize=(2,6))
+    ax.bar(0, sudah_terisi, color="green", label="Isi (L)")
+    ax.bar(0, masih_kosong, bottom=sudah_terisi, color="yellow", label="Kosong (L)")
+    ax.set_ylim(0, kapasitas)
+    ax.set_xticks([])
+    ax.set_ylabel("Liter")
+    ax.legend()
+    st.pyplot(fig)
 
-ax.set_ylim(0, kapasitas)
-ax.set_xlim(-0.5, 0.5)
-ax.set_ylabel("Liter")
-ax.set_xticks([])
-ax.set_title("Isi Jerigen")
-ax.legend()
+    # Simpan history
+    save_history("Fungisida", {
+        "kapasitas": kapasitas,
+        "sisa": sudah_terisi,
+        "air_tambah": air_tambah,
+        "fungisida_tambah": konsentrat_tambah
+    })
 
-st.pyplot(fig)
+    # Download CSV khusus Fungisida
+    if os.path.exists(HISTORY_FILE):
+        df = pd.read_csv(HISTORY_FILE)
+        df_fungisida = df[df["menu"] == "Fungisida"]
+        st.download_button(
+            label="⬇️ Download Data Fungisida",
+            data=df_fungisida.to_csv(index=False).encode("utf-8"),
+            file_name="fungisida_history.csv",
+            mime="text/csv"
+        )
 
-# Simpan ke riwayat
-if st.button("💾 Simpan ke Riwayat"):
-    entry = {
-        "Waktu": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "Kapasitas (L)": kapasitas,
-        "Sisa Isi (L)": sisa_isi,
-        "Dosis (L/L)": dosis,
-        "Air Tambah (L)": air_tambah,
-        "Konsentrat Tambah (L)": konsentrat_tambah
-    }
-    save_history(entry)
-    st.success("Data berhasil disimpan ke riwayat!")
+# ---------------- Furadan ----------------
+elif menu == "🐛 Furadan":
+    st.title("🐛 Total Furadan yang Digunakan (kg)")
+    furadan_total = st.number_input("Masukkan total Furadan (kg)", min_value=0.0, value=0.0, step=0.1)
+    st.success(f"Total Furadan digunakan: **{furadan_total} kg**")
 
-# Tampilkan riwayat
-st.subheader("📜 Riwayat Input")
-history = load_history()
-st.dataframe(history)
+    save_history("Furadan", {"furadan_total_kg": furadan_total})
+
+    if os.path.exists(HISTORY_FILE):
+        df = pd.read_csv(HISTORY_FILE)
+        df_furadan = df[df["menu"] == "Furadan"]
+        st.download_button(
+            label="⬇️ Download Data Furadan",
+            data=df_furadan.to_csv(index=False).encode("utf-8"),
+            file_name="furadan_history.csv",
+            mime="text/csv"
+        )
+
+# ---------------- Pupuk ----------------
+elif menu == "🌿 Pupuk":
+    st.title("🌿 Total Pupuk yang Digunakan (kg)")
+    pupuk_total = st.number_input("Masukkan total Pupuk (kg)", min_value=0.0, value=0.0, step=0.1)
+    st.success(f"Total Pupuk digunakan: **{pupuk_total} kg**")
+
+    save_history("Pupuk", {"pupuk_total_kg": pupuk_total})
+
+    if os.path.exists(HISTORY_FILE):
+        df = pd.read_csv(HISTORY_FILE)
+        df_pupuk = df[df["menu"] == "Pupuk"]
+        st.download_button(
+            label="⬇️ Download Data Pupuk",
+            data=df_pupuk.to_csv(index=False).encode("utf-8"),
+            file_name="pupuk_history.csv",
+            mime="text/csv"
+        )
+
+# ---------------- BIN ----------------
+elif menu == "🧺 BIN":
+    st.title("🧺 Data BIN (wadah bibit)")
+    jumlah_bin = st.number_input("Jumlah BIN terpakai", min_value=1, value=10)
+    st.success(f"Total BIN digunakan: **{jumlah_bin} BIN**")
+
+    save_history("BIN", {"jumlah_bin": jumlah_bin})
+
+    if os.path.exists(HISTORY_FILE):
+        df = pd.read_csv(HISTORY_FILE)
+        df_bin = df[df["menu"] == "BIN"]
+        st.download_button(
+            label="⬇️ Download Data BIN",
+            data=df_bin.to_csv(index=False).encode("utf-8"),
+            file_name="bin_history.csv",
+            mime="text/csv"
+        )
+
+# ---------------- Riwayat ----------------
+elif menu == "📖 Riwayat":
+    st.title("📖 Riwayat Data Penggunaan")
+    if os.path.exists(HISTORY_FILE):
+        df = pd.read_csv(HISTORY_FILE)
+        st.dataframe(df)
+
+        st.download_button(
+            label="⬇️ Download Semua Data",
+            data=df.to_csv(index=False).encode("utf-8"),
+            file_name="all_history.csv",
+            mime="text/csv"
+        )
+    else:
+        st.warning("Belum ada riwayat data yang tersimpan.")
