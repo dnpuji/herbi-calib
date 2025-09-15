@@ -52,15 +52,13 @@ def save_history(entry, sheet_name):
             st.error(f"Gagal simpan ke Google Sheets: {e}")
 
 
-def draw_jerigen(current, capacity):
-    """Visualisasi jerigen vertikal"""
-    empty = capacity - current
-    fig, ax = plt.subplots(figsize=(2, 6))
-    ax.bar([0], [current], color="green", label="Isi")
-    ax.bar([0], [empty], bottom=[current], color="yellow", label="Kosong")
-    ax.set_ylim(0, capacity)
-    ax.set_xticks([])
-    ax.set_ylabel("Liter")
+def draw_jerigen(konsentrat, air, kapasitas):
+    """Visualisasi jerigen horizontal"""
+    fig, ax = plt.subplots(figsize=(6, 2))
+    ax.barh(["Jerigen"], [air], color="skyblue", label=f"Air {air:.2f} L")
+    ax.barh(["Jerigen"], [konsentrat], left=[air], color="green", label=f"Konsentrat {konsentrat:.2f} L")
+    ax.set_xlim(0, kapasitas)
+    ax.set_xlabel("Liter")
     ax.set_title("Visualisasi Jerigen")
     ax.legend()
     st.pyplot(fig)
@@ -75,22 +73,24 @@ st.title("🌱 Aplikasi Input Tebu")
 menu = st.tabs(["🍄 Fungisida", "🐛 Furadan", "🌱 Pupuk", "🧺 BIN", "📖 Riwayat"])
 now = datetime.now()
 tanggal = now.strftime("%d/%m/%Y")
-waktu = now.strftime("%H:%M:%S")  # ✅ diperbaiki
+waktu = now.strftime("%H:%M:%S")
 
 # ---------------- Fungisida ----------------
 with menu[0]:
-    st.header("🍄 Input Fungisida (Kalibrasi)")
+    st.header("🍄 Input Fungisida")
     kapasitas = st.number_input("Kapasitas Jerigen (L)", min_value=1.0, value=20.0)
     dosis = st.number_input("Dosis Fungisida (L/L campuran)", min_value=0.0, value=0.24)
-    sisa = st.number_input("Sisa isi di Jerigen (L)", min_value=0.0, value=10.0)
 
-    air = kapasitas - sisa
-    konsentrat = dosis * air
+    # Mode 1: target = kapasitas jerigen
+    total_campuran = kapasitas
+    konsentrat = dosis * total_campuran
+    air = total_campuran - konsentrat
 
-    st.write(f"💧 Tambahkan **{air:.2f} L air**")
-    st.write(f"🧪 Tambahkan **{konsentrat:.2f} L fungisida**")
+    st.success(f"Untuk {total_campuran:.2f} L campuran total:")
+    st.write(f"🧪 Konsentrat: **{konsentrat:.2f} L**")
+    st.write(f"💧 Air: **{air:.2f} L**")
 
-    draw_jerigen(sisa, kapasitas)
+    draw_jerigen(konsentrat, air, kapasitas)
 
     if st.button("💾 Simpan Data", key="fungi_save"):
         entry = {
@@ -98,9 +98,9 @@ with menu[0]:
             "Waktu": waktu,
             "Menu": "Fungisida",
             "Kapasitas (L)": kapasitas,
-            "Sisa Jerigen (L)": sisa,
-            "Air Ditambahkan (L)": air,
-            "Fungisida Ditambahkan (L)": konsentrat
+            "Total Campuran (L)": total_campuran,
+            "Air (L)": air,
+            "Konsentrat (L)": konsentrat
         }
         save_history(entry, SHEET_NAME_FUNGISIDA)
         st.success("Data Fungisida berhasil disimpan ✅")
@@ -160,9 +160,9 @@ with menu[4]:
     if os.path.exists(HISTORY_FILE):
         df = pd.read_csv(HISTORY_FILE)
 
-        # Tentukan kolom numerik yang ingin ditotal (exclude Kapasitas & Sisa)
+        # Tentukan kolom numerik yang ingin ditotal (exclude Kapasitas)
         numeric_cols = [c for c in df.select_dtypes(include="number").columns
-                        if c not in ["Kapasitas (L)", "Sisa Jerigen (L)"]]
+                        if c not in ["Kapasitas (L)"]]
 
         # Ringkasan harian
         summary = df.groupby(["Tanggal", "Menu"])[numeric_cols].sum().reset_index()
