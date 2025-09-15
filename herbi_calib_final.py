@@ -35,7 +35,6 @@ else:
 # ==============================
 def save_history(entry, sheet_name):
     """Simpan data ke CSV dan Google Sheets"""
-    # Simpan ke CSV
     if os.path.exists(HISTORY_FILE):
         df = pd.read_csv(HISTORY_FILE)
         df = pd.concat([df, pd.DataFrame([entry])], ignore_index=True)
@@ -43,7 +42,6 @@ def save_history(entry, sheet_name):
         df = pd.DataFrame([entry])
     df.to_csv(HISTORY_FILE, index=False)
 
-    # Simpan ke Google Sheets
     if client:
         try:
             sheet = client.open_by_key(SHEET_ID).worksheet(sheet_name)
@@ -53,12 +51,13 @@ def save_history(entry, sheet_name):
 
 
 def draw_jerigen(konsentrat, air, kapasitas):
-    """Visualisasi jerigen horizontal"""
-    fig, ax = plt.subplots(figsize=(6, 2))
-    ax.barh(["Jerigen"], [air], color="skyblue", label=f"Air {air:.2f} L")
-    ax.barh(["Jerigen"], [konsentrat], left=[air], color="green", label=f"Konsentrat {konsentrat:.2f} L")
-    ax.set_xlim(0, kapasitas)
-    ax.set_xlabel("Liter")
+    """Visualisasi jerigen vertikal"""
+    fig, ax = plt.subplots(figsize=(3, 6))
+    ax.bar([0], [konsentrat], color="green", label=f"Konsentrat {konsentrat:.2f} L")
+    ax.bar([0], [air], bottom=[konsentrat], color="skyblue", label=f"Air {air:.2f} L")
+    ax.set_ylim(0, kapasitas)
+    ax.set_xticks([])
+    ax.set_ylabel("Liter")
     ax.set_title("Visualisasi Jerigen")
     ax.legend()
     st.pyplot(fig)
@@ -81,7 +80,7 @@ with menu[0]:
     kapasitas = st.number_input("Kapasitas Jerigen (L)", min_value=1.0, value=20.0)
     dosis = st.number_input("Dosis Fungisida (L/L campuran)", min_value=0.0, value=0.24)
 
-    # Mode 1: target = kapasitas jerigen
+    # Target = kapasitas jerigen
     total_campuran = kapasitas
     konsentrat = dosis * total_campuran
     air = total_campuran - konsentrat
@@ -110,14 +109,8 @@ with menu[0]:
 with menu[1]:
     st.header("🐛 Input Furadan (kg)")
     jumlah = st.number_input("Jumlah Furadan (kg)", min_value=0.0, value=0.0)
-
     if st.button("💾 Simpan Data", key="fura_save"):
-        entry = {
-            "Tanggal": tanggal,
-            "Waktu": waktu,
-            "Menu": "Furadan",
-            "Jumlah (kg)": jumlah
-        }
+        entry = {"Tanggal": tanggal, "Waktu": waktu, "Menu": "Furadan", "Jumlah (kg)": jumlah}
         save_history(entry, SHEET_NAME_FURADAN)
         st.success("Data Furadan berhasil disimpan ✅")
 
@@ -126,14 +119,8 @@ with menu[1]:
 with menu[2]:
     st.header("🌱 Input Pupuk (kg)")
     jumlah = st.number_input("Jumlah Pupuk (kg)", min_value=0.0, value=0.0)
-
     if st.button("💾 Simpan Data", key="pupuk_save"):
-        entry = {
-            "Tanggal": tanggal,
-            "Waktu": waktu,
-            "Menu": "Pupuk",
-            "Jumlah (kg)": jumlah
-        }
+        entry = {"Tanggal": tanggal, "Waktu": waktu, "Menu": "Pupuk", "Jumlah (kg)": jumlah}
         save_history(entry, SHEET_NAME_PUPUK)
         st.success("Data Pupuk berhasil disimpan ✅")
 
@@ -142,14 +129,8 @@ with menu[2]:
 with menu[3]:
     st.header("🧺 Input BIN (unit)")
     jumlah = st.number_input("Jumlah BIN", min_value=0, value=0)
-
     if st.button("💾 Simpan Data", key="bin_save"):
-        entry = {
-            "Tanggal": tanggal,
-            "Waktu": waktu,
-            "Menu": "BIN",
-            "Jumlah (BIN)": jumlah
-        }
+        entry = {"Tanggal": tanggal, "Waktu": waktu, "Menu": "BIN", "Jumlah (BIN)": jumlah}
         save_history(entry, SHEET_NAME_BIN)
         st.success("Data BIN berhasil disimpan ✅")
 
@@ -160,17 +141,12 @@ with menu[4]:
     if os.path.exists(HISTORY_FILE):
         df = pd.read_csv(HISTORY_FILE)
 
-        # Tentukan kolom numerik yang ingin ditotal (exclude Kapasitas)
-        numeric_cols = [c for c in df.select_dtypes(include="number").columns
-                        if c not in ["Kapasitas (L)"]]
-
-        # Ringkasan harian
+        numeric_cols = [c for c in df.select_dtypes(include="number").columns if c not in ["Kapasitas (L)"]]
         summary = df.groupby(["Tanggal", "Menu"])[numeric_cols].sum().reset_index()
 
         st.subheader("📊 Ringkasan Harian")
         st.dataframe(summary)
 
-        # Download ringkasan
         st.download_button(
             label="⬇️ Download Ringkasan",
             data=summary.to_csv(index=False).encode("utf-8"),
@@ -178,11 +154,9 @@ with menu[4]:
             mime="text/csv"
         )
 
-        # Opsi: tampilkan data mentah juga
         with st.expander("📂 Lihat Data Mentah"):
             st.dataframe(df)
 
-        # Hapus data dengan password
         st.subheader("🔑 Hapus Data (Admin Only)")
         pw = st.text_input("Masukkan password admin:", type="password")
         if pw == ADMIN_PASSWORD:
