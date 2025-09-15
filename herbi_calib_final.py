@@ -13,7 +13,7 @@ HISTORY_FILE = "history.csv"
 ADMIN_PASSWORD = "admin1234"
 
 # Google Sheets API setup
-SHEET_ID = "1AbCdEfGhIJkLmNoPqRsTuVwXyZ1234567890"  # ganti dengan ID Google Sheet
+SHEET_ID = "1uq1boLLUXeuIUtNo2xwCFivgfGPOuZxNDKvbklmWOd4"  # ganti dengan ID Google Sheet
 SHEET_NAME = "Sheet1"
 
 scope = [
